@@ -335,20 +335,6 @@ class HandDetector:
             cv2.circle(frame, pt, 8, color, -1)
             cv2.circle(frame, pt, 10, (255, 255, 255), 2)
         
-        # Visualize the detected pattern near the hand
-        # This helps user understand exactly what the computer sees
-        states = features['finger_states']
-        pattern = ""
-        pattern += "T" if states['thumb'] else "_"
-        pattern += "I" if states['index'] else "_"
-        pattern += "M" if states['middle'] else "_"
-        pattern += "R" if states['ring'] else "_"
-        pattern += "P" if states['pinky'] else "_"
-        
-        wrist_pt = (int(landmarks[0]['x'] * w), int(landmarks[0]['y'] * h))
-        cv2.putText(frame, pattern, (wrist_pt[0] - 30, wrist_pt[1] + 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
         # Draw other landmarks smaller
         for i, lm in enumerate(landmarks):
             if i not in fingertip_indices:
