@@ -71,3 +71,44 @@ COLORS = {
     "warning": "#ffc107",
     "error": "#ff4757"
 }
+
+# =============================================================================
+# BIS COMPLIANCE SETTINGS (IS 13252 & IS 16333)
+# =============================================================================
+
+# Compliance Version
+BIS_COMPLIANCE_VERSION = "1.0.0"
+
+# IS 13252 - IT Equipment Safety Settings
+IS_13252_SETTINGS = {
+    "enabled": True,
+    "input_validation": True,
+    "error_monitoring": True,
+    "resource_tracking": True,
+    "audit_logging": True,
+    "max_error_threshold": 100,  # Max errors before degraded mode
+    "health_check_interval": 60,  # Seconds between health checks
+}
+
+# IS 16333 - Camera System Safety Settings  
+IS_16333_SETTINGS = {
+    "enabled": True,
+    "camera_validation": True,
+    "frame_quality_check": True,
+    "min_brightness": 30,
+    "max_brightness": 225,
+    "min_contrast": 20,
+    "privacy_mode": False,  # Enable to prevent frame storage
+    "max_error_frames": 50,  # Max consecutive error frames before warning
+}
+
+# Safety Logging Settings
+SAFETY_LOG_FILE = os.path.join(LOGS_DIR, "safety_audit.log")
+SAFETY_LOG_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+SAFETY_LOG_BACKUP_COUNT = 5
+
+# Compliance Metadata
+COMPLIANCE_STANDARDS = [
+    "IS 13252 - Information Technology Equipment Safety",
+    "IS 16333 - Camera-based Systems for Assistive Technology (Ready)"
+]

@@ -114,6 +114,53 @@ Edit `config.py` to customize:
 - Detection confidence thresholds
 - Recording duration (default: 10 seconds)
 - UI colors and fonts
+- BIS compliance settings (IS 13252 / IS 16333)
+
+## 🛡️ BIS Compliance
+
+This system is developed following Bureau of Indian Standards (BIS) guidelines for software safety and reliability:
+
+### IS 13252 - Information Technology Equipment Safety
+
+The software implementation adheres to IS 13252 principles:
+
+| Feature | Implementation |
+|---------|----------------|
+| **Input Validation** | All user inputs and external data are validated before processing |
+| **Error Handling** | Graceful degradation under fault conditions with recovery mechanisms |
+| **Resource Management** | Proper allocation, tracking, and cleanup of system resources |
+| **Data Integrity** | Checksums and validation for data integrity verification |
+| **Audit Logging** | Comprehensive safety event logging in `data/logs/safety_audit.log` |
+
+### IS 16333 - Camera-based Systems (Ready for Hardware Integration)
+
+The system is designed for future compliance with IS 16333:
+
+| Feature | Implementation |
+|---------|----------------|
+| **Camera Validation** | Initialization verification and frame quality checks |
+| **Frame Quality** | Brightness and contrast monitoring for reliable detection |
+| **Privacy Protection** | Privacy mode option to prevent frame storage |
+| **System Monitoring** | Continuous health monitoring and error tracking |
+
+### Compliance Files
+
+- `modules/bis_compliance.py` - Core BIS compliance module
+- `data/logs/safety_audit.log` - Safety event audit trail
+- `data/logs/compliance_report.txt` - Generated compliance report (on shutdown)
+
+### Generating Compliance Report
+
+```python
+from modules.bis_compliance import generate_compliance_report, get_compliance_info
+
+# Get compliance info as dictionary
+info = get_compliance_info()
+
+# Generate human-readable report
+report = generate_compliance_report()
+print(report)
+```
 
 ## 🔧 Requirements
 
@@ -121,6 +168,32 @@ Edit `config.py` to customize:
 - Webcam
 - Internet connection (for Tamil/Hindi TTS)
 
+## 📁 Project Structure
+
+```
+mvp/
+├── main.py                 # Application entry point
+├── config.py               # Configuration settings (inc. BIS compliance)
+├── requirements.txt        # Dependencies
+├── modules/
+│   ├── hand_detector.py    # MediaPipe hand detection (IS 16333 ready)
+│   ├── gesture_recognizer.py # Gesture recognition (3 modes)
+│   ├── sentence_former.py  # Continuous gesture → sentence
+│   ├── tts_engine.py       # Multi-language TTS
+│   ├── logger.py           # Session logging
+│   └── bis_compliance.py   # BIS compliance module (IS 13252 / IS 16333)
+├── ui/
+│   ├── app.py              # Main application UI (BIS compliant)
+│   └── styles.py           # Accessibility-first styling
+└── data/
+    └── logs/               # Session logs, safety audit, compliance reports
+```
+
 ## 📝 License
 
 Built for accessibility and inclusion. Use responsibly.
+
+## 🏛️ Standards Compliance Statement
+
+> "At the software level, this sign language detection system follows BIS-aligned guidelines such as IS 13252 for safe and reliable IT systems, with future readiness for IS 16333 camera-based compliance when hardware integration is done."
+

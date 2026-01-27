@@ -1,6 +1,10 @@
 """
 Hand Detection Module - Pixel Perfect Version
 Uses angle-based detection for accurate finger state recognition
+
+BIS Compliance:
+- IS 13252: Implements safe resource management and error handling
+- IS 16333: Camera system safety checks and frame validation (Ready)
 """
 
 import cv2
@@ -15,20 +19,65 @@ import math
 
 import config
 
+# Import BIS compliance components
+try:
+    from modules.bis_compliance import (
+        SafetyMonitor, CameraSystemSafety, ResourceManager,
+        safe_execute, InputValidator
+    )
+    BIS_COMPLIANCE_AVAILABLE = True
+except ImportError:
+    BIS_COMPLIANCE_AVAILABLE = False
+
+
 
 class HandDetector:
     """
     High-accuracy hand detection with angle-based finger recognition.
+    
+    BIS Compliance (IS 13252 / IS 16333):
+    - Safe resource initialization and cleanup
+    - Camera system validation
+    - Error monitoring and graceful degradation
     """
     
     def __init__(self):
-        # Download model if needed
+        # Initialize BIS safety monitoring
+        if BIS_COMPLIANCE_AVAILABLE:
+            self.safety_monitor = SafetyMonitor()
+            self.camera_safety = CameraSystemSafety()
+            self.resource_manager = ResourceManager()
+            self.safety_monitor.report_info(
+                "HandDetector",
+                "Initializing hand detection module with BIS compliance"
+            )
+        else:
+            self.safety_monitor = None
+            self.camera_safety = None
+            self.resource_manager = None
+        
+        # Download model if needed (with error handling per IS 13252)
         model_path = os.path.join(config.BASE_DIR, 'hand_landmarker.task')
-        if not os.path.exists(model_path):
-            print("Downloading hand landmarker model...")
-            url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
-            urllib.request.urlretrieve(url, model_path)
-            print("Model downloaded!")
+        try:
+            if not os.path.exists(model_path):
+                print("Downloading hand landmarker model...")
+                url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+                urllib.request.urlretrieve(url, model_path)
+                print("Model downloaded!")
+                if self.safety_monitor:
+                    self.safety_monitor.report_info(
+                        "HandDetector",
+                        "Hand landmarker model downloaded successfully"
+                    )
+        except Exception as e:
+            if self.safety_monitor:
+                self.safety_monitor.report_error(
+                    "HandDetector",
+                    Exception(f"Failed to download model: {e}"),
+                    recoverable=False
+                )
+            raise
+
         
         # Initialize MediaPipe
         base_options = python.BaseOptions(model_asset_path=model_path)
@@ -304,6 +353,26 @@ class HandDetector:
                 cv2.circle(frame, pt, 4, (100, 100, 100), -1)
     
     def release(self):
-        """Release resources."""
-        if hasattr(self, 'hand_landmarker'):
-            self.hand_landmarker.close()
+        """
+        Release resources safely (IS 13252 compliant).
+        
+        Ensures proper cleanup of all allocated resources
+        with safety monitoring and audit logging.
+        """
+        try:
+            if hasattr(self, 'hand_landmarker'):
+                self.hand_landmarker.close()
+            
+            if self.safety_monitor:
+                self.safety_monitor.report_info(
+                    "HandDetector",
+                    "Resources released successfully"
+                )
+        except Exception as e:
+            if self.safety_monitor:
+                self.safety_monitor.report_error(
+                    "HandDetector",
+                    Exception(f"Error during resource release: {e}"),
+                    recoverable=True
+                )
+

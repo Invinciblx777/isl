@@ -1,0 +1,2 @@
+2026-01-27 14:11:54 | INFO | [SafetyMonitor] Safety monitoring initialized
+2026-01-27 14:11:54 | INFO | [BISCompliance] BIS Compliance module loaded | Details: {'version': '1.0.0', 'standards': ['IS 13252', 'IS 16333']}
