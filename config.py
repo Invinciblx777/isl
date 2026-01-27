@@ -25,17 +25,17 @@ CAMERA_HEIGHT = 480
 CAMERA_FPS = 30
 FRAME_SKIP = 1  # Process every frame for smoother detection
 
-# Hand Detection Settings
+# Hand Detection Settings (Optimized for better detection)
 MAX_HANDS = 2
-MIN_DETECTION_CONFIDENCE = 0.65
-MIN_TRACKING_CONFIDENCE = 0.55
-LANDMARK_SMOOTHING_FACTOR = 0.6  # Higher = smoother, lower = more responsive
+MIN_DETECTION_CONFIDENCE = 0.5  # Lowered from 0.65 for better detection
+MIN_TRACKING_CONFIDENCE = 0.5   # Lowered from 0.55 for smoother tracking
+LANDMARK_SMOOTHING_FACTOR = 0.4  # Lowered from 0.6 for more responsive detection
 
-# Gesture Recognition Settings
+# Gesture Recognition Settings (Optimized for faster response)
 GESTURE_BUFFER_DURATION = 10.0  # seconds
-GESTURE_HOLD_TIME = 0.3  # seconds to hold gesture for recognition (faster)
-PAUSE_THRESHOLD = 0.6  # seconds of stillness to detect pause
-MOTION_THRESHOLD = 0.02  # normalized motion threshold
+GESTURE_HOLD_TIME = 0.2  # Reduced from 0.3 for faster recognition
+PAUSE_THRESHOLD = 0.5  # Reduced from 0.6 for quicker pause detection
+MOTION_THRESHOLD = 0.015  # Reduced from 0.02 for better motion sensitivity
 
 # Recognition Modes
 MODE_SENTENCE = "sentence"

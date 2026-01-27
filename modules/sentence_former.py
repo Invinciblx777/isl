@@ -151,8 +151,8 @@ class SentenceFormer:
                 'completed': True
             }
         
-        # Add to buffer with timestamp
-        if gesture and confidence > 0.6:
+        # Add to buffer with timestamp (lowered threshold from 0.6 to 0.5)
+        if gesture and confidence > 0.5:
             self.gesture_buffer.append({
                 'gesture': gesture,
                 'confidence': confidence,
@@ -167,9 +167,17 @@ class SentenceFormer:
                     # Gesture held long enough - confirm it
                     if not self.confirmed_gestures or self.confirmed_gestures[-1] != gesture:
                         self.confirmed_gestures.append(gesture)
+                        # Reset hold timer for next confirmation
+                        self.last_gesture_time = current_time
             else:
+                # New gesture detected
                 self.last_gesture = gesture
                 self.last_gesture_time = current_time
+                
+                # For very high confidence, confirm immediately
+                if confidence > 0.9:
+                    if not self.confirmed_gestures or self.confirmed_gestures[-1] != gesture:
+                        self.confirmed_gestures.append(gesture)
         
         return {
             'is_recording': True,

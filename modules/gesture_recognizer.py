@@ -34,19 +34,54 @@ class GestureRecognizer:
         self.gesture_history = []
     
     def _stabilize(self, gesture, confidence):
-        """Require 2 consecutive identical detections."""
+        """
+        Stabilize gesture detection to reduce flickering.
+        
+        Improved algorithm:
+        - Requires same gesture 2 times in last 3 frames
+        - Weights confidence based on consistency
+        """
         if gesture is None:
-            self.gesture_history = []
+            # Don't immediately clear history on single None
+            if len(self.gesture_history) > 0:
+                self.gesture_history.append(None)
+                if len(self.gesture_history) > self.history_size:
+                    self.gesture_history.pop(0)
+                # Only return None if multiple consecutive Nones
+                none_count = sum(1 for g in self.gesture_history if g is None)
+                if none_count >= 2:
+                    self.gesture_history = []
+                    return None, 0.0
+                # Otherwise keep last valid gesture
+                for g in reversed(self.gesture_history):
+                    if g is not None:
+                        return g, confidence * 0.7  # Lower confidence for held gesture
             return None, 0.0
         
         self.gesture_history.append(gesture)
         if len(self.gesture_history) > self.history_size:
             self.gesture_history.pop(0)
         
-        # Need 2 consecutive same gestures
-        if len(self.gesture_history) >= 2:
-            if self.gesture_history[-1] == self.gesture_history[-2]:
-                return gesture, confidence
+        # Count occurrences of current gesture in history
+        valid_history = [g for g in self.gesture_history if g is not None]
+        if not valid_history:
+            return None, 0.0
+        
+        # Check if current gesture appears enough times
+        gesture_count = sum(1 for g in valid_history if g == gesture)
+        
+        # Require gesture to appear at least once (immediate response)
+        # For high confidence (>0.85), accept immediately
+        # For lower confidence, require 2 matches
+        if confidence > 0.85:
+            return gesture, confidence
+        elif gesture_count >= 2:
+            return gesture, confidence
+        elif len(valid_history) >= 2 and valid_history[-1] == valid_history[-2]:
+            return gesture, confidence
+        elif gesture_count >= 1 and confidence > 0.7:
+            # Accept single occurrence with good confidence
+            return gesture, confidence * 0.9
         
         return None, 0.0
     
