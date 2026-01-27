@@ -200,100 +200,68 @@ class HandDetector:
     
     def _is_finger_extended(self, landmarks, mcp, pip, dip, tip):
         """
-        Accurately detect if finger is extended using multiple checks.
+        Robust finger extension detection.
         
-        Fixed detection that works for any hand orientation:
-        1. Distance ratio: tip should be far from MCP
-        2. Angle check: finger should be relatively straight
-        3. Curl check: compare tip-to-wrist vs pip-to-wrist distance
+        Simplified Logic:
+        A finger is extended if the tip is significantly further from the wrist 
+        than the PIP joint is. This works regardless of hand orientation (up/down/side).
         """
-        mcp_pt = landmarks[mcp]
-        pip_pt = landmarks[pip]
-        dip_pt = landmarks[dip]
         tip_pt = landmarks[tip]
+        pip_pt = landmarks[pip]
         wrist_pt = landmarks[self.WRIST]
+        mcp_pt = landmarks[mcp]
         
-        # Method 1: Distance ratio (tip far from MCP compared to PIP)
-        tip_to_mcp = self._get_distance(tip_pt, mcp_pt)
-        pip_to_mcp = self._get_distance(pip_pt, mcp_pt)
-        dip_to_mcp = self._get_distance(dip_pt, mcp_pt)
-        
-        # Extended finger: tip is furthest from MCP
-        dist_ratio = tip_to_mcp / (pip_to_mcp + 0.0001)
-        distance_check = dist_ratio > 1.3  # Lowered threshold for better detection
-        
-        # Method 2: Angle-based (finger straight = high angle)
-        # Use angle at PIP joint - extended fingers have angles > 120 degrees
-        pip_angle = self._get_angle(mcp_pt, pip_pt, dip_pt)
-        dip_angle = self._get_angle(pip_pt, dip_pt, tip_pt)
-        
-        # Lowered thresholds - 120 degrees is more realistic for extended fingers
-        angle_check = pip_angle > 120 and dip_angle > 120
-        
-        # Method 3: Tip further from wrist than MCP (finger pointing outward)
+        # Distance to wrist is invariant to rotation
         tip_to_wrist = self._get_distance(tip_pt, wrist_pt)
+        pip_to_wrist = self._get_distance(pip_pt, wrist_pt)
         mcp_to_wrist = self._get_distance(mcp_pt, wrist_pt)
-        extension_check = tip_to_wrist > mcp_to_wrist * 1.1
         
-        # Method 4: Compare with curled position
-        # When curled, tip is close to palm (near MCP level)
-        # When extended, tip is far from palm
-        curl_distance = self._get_distance(tip_pt, mcp_pt)
-        base_length = self._get_distance(pip_pt, mcp_pt) + self._get_distance(dip_pt, pip_pt)
-        curl_check = curl_distance > base_length * 0.8
+        # Primary Check: Tip must be further out than PIP
+        # Multiplier 1.2 ensures it's significantly extended, not just loosely open
+        is_extended = tip_to_wrist > pip_to_wrist * 1.15
         
-        # Combine checks - need at least 2 of 4 to be true
-        checks_passed = sum([distance_check, angle_check, extension_check, curl_check])
+        # Secondary Check: Finger must not be curled under (tip shouldn't be close to MCP)
+        # If tip is close to MCP (distance < MCP-to-Wrist * 0.5), it's likely curled
+        tip_to_mcp = self._get_distance(tip_pt, mcp_pt)
+        is_not_curled = tip_to_mcp > mcp_to_wrist * 0.4
         
-        return checks_passed >= 2
+        return is_extended and is_not_curled
     
     def _is_thumb_extended(self, landmarks, hand_label):
         """
-        Improved thumb detection that works for various hand orientations.
+        Robust thumb detection.
         
-        Thumb is anatomically different - uses multiple detection methods:
-        1. Distance from palm center
-        2. Angle at IP joint
-        3. Horizontal spread relative to hand direction
+        Logic:
+        Thumb is extended if the tip is far from the index finger MCP (base of index).
         """
         thumb_tip = landmarks[self.THUMB_TIP]
         thumb_ip = landmarks[self.THUMB_IP]
         thumb_mcp = landmarks[self.THUMB_MCP]
-        thumb_cmc = landmarks[self.THUMB_CMC]
         index_mcp = landmarks[self.INDEX_MCP]
+        pinky_mcp = landmarks[self.PINKY_MCP]
         wrist = landmarks[self.WRIST]
-        middle_mcp = landmarks[self.MIDDLE_MCP]
         
-        # Method 1: Distance from thumb tip to palm center
-        palm_center_x = (wrist['x'] + index_mcp['x'] + middle_mcp['x']) / 3
-        palm_center_y = (wrist['y'] + index_mcp['y'] + middle_mcp['y']) / 3
-        palm_center = {'x': palm_center_x, 'y': palm_center_y}
+        # 1. Distance check relative to hand size (Index MCP to Pinky MCP is a good scale reference)
+        hand_scale = self._get_distance(index_mcp, pinky_mcp)
+        if hand_scale == 0: hand_scale = 1.0 # Prevent div by zero
         
-        thumb_to_palm = self._get_distance(thumb_tip, palm_center)
-        thumb_mcp_to_palm = self._get_distance(thumb_mcp, palm_center)
+        # Distance from thumb tip to Index MCP
+        thumb_spread = self._get_distance(thumb_tip, index_mcp)
         
-        # Thumb extended if tip is far from palm
-        distance_check = thumb_to_palm > thumb_mcp_to_palm * 1.2
+        # If thumb is spread out more than 80% of palm width, it's extended
+        is_spread = thumb_spread > hand_scale * 0.8
         
-        # Method 2: Angle at IP joint (extended = straighter)
+        # 2. Angle check - thumb IP joint should be straight
         thumb_angle = self._get_angle(thumb_mcp, thumb_ip, thumb_tip)
-        angle_check = thumb_angle > 140  # Lowered from 150
+        is_straight = thumb_angle > 150 # Thumbs are usually quite straight when extended
         
-        # Method 3: Distance from index finger
-        # Extended thumb spreads away from index
-        thumb_to_index = self._get_distance(thumb_tip, index_mcp)
-        index_width = self._get_distance(thumb_mcp, index_mcp)
-        spread_check = thumb_to_index > index_width * 0.8
+        # 3. Distance from wrist (must be far from wrist)
+        tip_to_wrist = self._get_distance(landmarks[self.THUMB_TIP], wrist)
+        ip_to_wrist = self._get_distance(landmarks[self.THUMB_IP], wrist)
+        is_outward = tip_to_wrist > ip_to_wrist
         
-        # Method 4: Thumb tip should be further from wrist than thumb CMC when extended        
-        tip_to_wrist = self._get_distance(thumb_tip, wrist)
-        cmc_to_wrist = self._get_distance(thumb_cmc, wrist)
-        extension_check = tip_to_wrist > cmc_to_wrist * 1.1
-        
-        # Combine checks - need at least 2 of 4
-        checks_passed = sum([distance_check, angle_check, spread_check, extension_check])
-        
-        return checks_passed >= 2
+        # Require spread AND (straight OR outward)
+        return is_spread and (is_straight or is_outward)
     
     def _calculate_features(self, landmarks, hand_label='Right'):
         """Calculate hand features with accurate finger detection."""
@@ -367,6 +335,20 @@ class HandDetector:
             cv2.circle(frame, pt, 8, color, -1)
             cv2.circle(frame, pt, 10, (255, 255, 255), 2)
         
+        # Visualize the detected pattern near the hand
+        # This helps user understand exactly what the computer sees
+        states = features['finger_states']
+        pattern = ""
+        pattern += "T" if states['thumb'] else "_"
+        pattern += "I" if states['index'] else "_"
+        pattern += "M" if states['middle'] else "_"
+        pattern += "R" if states['ring'] else "_"
+        pattern += "P" if states['pinky'] else "_"
+        
+        wrist_pt = (int(landmarks[0]['x'] * w), int(landmarks[0]['y'] * h))
+        cv2.putText(frame, pattern, (wrist_pt[0] - 30, wrist_pt[1] + 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+
         # Draw other landmarks smaller
         for i, lm in enumerate(landmarks):
             if i not in fingertip_indices:

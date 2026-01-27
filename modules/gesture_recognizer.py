@@ -228,10 +228,17 @@ class GestureRecognizer:
         
         # ========== POSITION-BASED (5 fingers open) ==========
         
-        if pat == "TIMRP":  # All fingers open
+        
+        # ========== POSITION-BASED (5 fingers open) ==========
+        
+        # All fingers open (or just 4 fingers with thumb tucked)
+        if pat == "TIMRP" or pat == "_IMRP":
             if palm_y < 0.3:
                 return "STOP", 0.95  # Raised high
             elif palm_y < 0.45:
+                # If near chin/mouth, it might be THANK YOU (even with thumb)
+                if 0.35 < palm_x < 0.65:
+                    return "THANK_YOU", 0.9
                 return "HELLO", 0.94  # Mid-high (greeting)
             elif palm_y < 0.6:
                 if palm_x < 0.4:
@@ -241,19 +248,14 @@ class GestureRecognizer:
             else:
                 return "PLEASE", 0.88  # Low position
         
-        # ========== 4 FINGERS (no thumb) ==========
-        
-        if pat == "_IMRP":
-            if palm_y < 0.35:
-                return "THANK_YOU", 0.93  # Near chin
-            elif palm_y < 0.55:
-                return "WAIT", 0.88
-            else:
-                return "FOUR", 0.9
-        
         # ========== FIST (all closed) ==========
         
-        if pat == "_____":
+        # Strictly closed OR thumb slightly out (common error)
+        if pat == "_____" or pat == "T____" or pat == "_____":
+            # If thumb is out but pointing DOWN, it's BAD
+            if pat == "T____" and f['fingertips']['thumb'][1] > palm_y:
+                 return "BAD", 0.85
+                 
             if palm_y < 0.4:
                 return "YES", 0.95  # Fist up = yes/power
             elif 0.35 < palm_x < 0.65:
