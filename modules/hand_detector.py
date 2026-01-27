@@ -1,0 +1,309 @@
+"""
+Hand Detection Module - Pixel Perfect Version
+Uses angle-based detection for accurate finger state recognition
+"""
+
+import cv2
+import numpy as np
+from collections import deque
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+import urllib.request
+import os
+import math
+
+import config
+
+
+class HandDetector:
+    """
+    High-accuracy hand detection with angle-based finger recognition.
+    """
+    
+    def __init__(self):
+        # Download model if needed
+        model_path = os.path.join(config.BASE_DIR, 'hand_landmarker.task')
+        if not os.path.exists(model_path):
+            print("Downloading hand landmarker model...")
+            url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+            urllib.request.urlretrieve(url, model_path)
+            print("Model downloaded!")
+        
+        # Initialize MediaPipe
+        base_options = python.BaseOptions(model_asset_path=model_path)
+        options = vision.HandLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.IMAGE,
+            num_hands=config.MAX_HANDS,
+            min_hand_detection_confidence=config.MIN_DETECTION_CONFIDENCE,
+            min_hand_presence_confidence=config.MIN_TRACKING_CONFIDENCE,
+            min_tracking_confidence=config.MIN_TRACKING_CONFIDENCE
+        )
+        self.hand_landmarker = vision.HandLandmarker.create_from_options(options)
+        
+        # Smoothing
+        self.smoothing_factor = config.LANDMARK_SMOOTHING_FACTOR
+        self.prev_landmarks = [None, None]
+        
+        # Landmark indices
+        self.WRIST = 0
+        self.THUMB_CMC, self.THUMB_MCP, self.THUMB_IP, self.THUMB_TIP = 1, 2, 3, 4
+        self.INDEX_MCP, self.INDEX_PIP, self.INDEX_DIP, self.INDEX_TIP = 5, 6, 7, 8
+        self.MIDDLE_MCP, self.MIDDLE_PIP, self.MIDDLE_DIP, self.MIDDLE_TIP = 9, 10, 11, 12
+        self.RING_MCP, self.RING_PIP, self.RING_DIP, self.RING_TIP = 13, 14, 15, 16
+        self.PINKY_MCP, self.PINKY_PIP, self.PINKY_DIP, self.PINKY_TIP = 17, 18, 19, 20
+        
+        # Hand connections for drawing
+        self.HAND_CONNECTIONS = [
+            (0, 1), (1, 2), (2, 3), (3, 4),
+            (0, 5), (5, 6), (6, 7), (7, 8),
+            (0, 9), (9, 10), (10, 11), (11, 12),
+            (0, 13), (13, 14), (14, 15), (15, 16),
+            (0, 17), (17, 18), (18, 19), (19, 20),
+            (5, 9), (9, 13), (13, 17)
+        ]
+        
+    def detect(self, frame):
+        """Detect hands and extract landmarks."""
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        results = self.hand_landmarker.detect(mp_image)
+        
+        hands_data = []
+        
+        if results.hand_landmarks:
+            for idx, hand_landmarks in enumerate(results.hand_landmarks):
+                hand_label = "Right"
+                if results.handedness and idx < len(results.handedness):
+                    hand_label = results.handedness[idx][0].category_name
+                
+                confidence = 0.9
+                if results.handedness and idx < len(results.handedness):
+                    confidence = results.handedness[idx][0].score
+                
+                # Extract landmarks
+                landmarks = self._extract_landmarks(hand_landmarks)
+                
+                # Smooth landmarks
+                if idx < 2:
+                    landmarks = self._smooth_landmarks(landmarks, idx)
+                
+                # Calculate features with accurate finger detection
+                features = self._calculate_features(landmarks, hand_label)
+                
+                hands_data.append({
+                    'label': hand_label,
+                    'confidence': confidence,
+                    'landmarks': landmarks,
+                    'features': features
+                })
+                
+                # Draw
+                self._draw_landmarks(frame, landmarks, features)
+        
+        return {
+            'hands': hands_data,
+            'frame': frame,
+            'num_hands': len(hands_data)
+        }
+    
+    def _extract_landmarks(self, hand_landmarks):
+        """Extract landmarks as list of dicts."""
+        return [{'x': lm.x, 'y': lm.y, 'z': lm.z} for lm in hand_landmarks]
+    
+    def _smooth_landmarks(self, landmarks, hand_idx):
+        """Apply smoothing."""
+        if self.prev_landmarks[hand_idx] is None:
+            self.prev_landmarks[hand_idx] = landmarks
+            return landmarks
+        
+        alpha = self.smoothing_factor
+        smoothed = []
+        for i, lm in enumerate(landmarks):
+            prev = self.prev_landmarks[hand_idx][i]
+            smoothed.append({
+                'x': alpha * lm['x'] + (1 - alpha) * prev['x'],
+                'y': alpha * lm['y'] + (1 - alpha) * prev['y'],
+                'z': alpha * lm['z'] + (1 - alpha) * prev['z']
+            })
+        self.prev_landmarks[hand_idx] = smoothed
+        return smoothed
+    
+    def _get_distance(self, p1, p2):
+        """Calculate distance between two points."""
+        return math.sqrt((p1['x'] - p2['x'])**2 + (p1['y'] - p2['y'])**2)
+    
+    def _get_angle(self, p1, p2, p3):
+        """Calculate angle at p2 between p1-p2-p3."""
+        v1 = (p1['x'] - p2['x'], p1['y'] - p2['y'])
+        v2 = (p3['x'] - p2['x'], p3['y'] - p2['y'])
+        
+        dot = v1[0] * v2[0] + v1[1] * v2[1]
+        mag1 = math.sqrt(v1[0]**2 + v1[1]**2)
+        mag2 = math.sqrt(v2[0]**2 + v2[1]**2)
+        
+        if mag1 * mag2 == 0:
+            return 0
+        
+        cos_angle = max(-1, min(1, dot / (mag1 * mag2)))
+        return math.degrees(math.acos(cos_angle))
+    
+    def _is_finger_extended(self, landmarks, mcp, pip, dip, tip):
+        """
+        Accurately detect if finger is extended using multiple checks:
+        1. Tip should be far from MCP (finger straight)
+        2. PIP angle should be relatively straight (>140 degrees = extended)
+        3. Tip should be above PIP in y (for upward-pointing hand)
+        """
+        mcp_pt = landmarks[mcp]
+        pip_pt = landmarks[pip]
+        dip_pt = landmarks[dip]
+        tip_pt = landmarks[tip]
+        
+        # Method 1: Distance-based (tip far from palm)
+        tip_to_mcp = self._get_distance(tip_pt, mcp_pt)
+        pip_to_mcp = self._get_distance(pip_pt, mcp_pt)
+        
+        # If tip is further from MCP than PIP is, finger is likely extended
+        dist_ratio = tip_to_mcp / (pip_to_mcp + 0.001)
+        distance_check = dist_ratio > 1.5
+        
+        # Method 2: Angle-based (finger straight = high angle at PIP)
+        pip_angle = self._get_angle(mcp_pt, pip_pt, dip_pt)
+        dip_angle = self._get_angle(pip_pt, dip_pt, tip_pt)
+        
+        # Extended fingers have angles > 150 degrees
+        angle_check = pip_angle > 140 and dip_angle > 140
+        
+        # Method 3: Y-position (tip above PIP for upward hand)
+        y_check = tip_pt['y'] < pip_pt['y']
+        
+        # Combine checks - need at least 2 of 3 to be true
+        checks_passed = sum([distance_check, angle_check, y_check])
+        
+        return checks_passed >= 2
+    
+    def _is_thumb_extended(self, landmarks, hand_label):
+        """
+        Accurate thumb detection.
+        Thumb anatomy is different - check horizontal distance from palm.
+        """
+        thumb_tip = landmarks[self.THUMB_TIP]
+        thumb_ip = landmarks[self.THUMB_IP]
+        thumb_mcp = landmarks[self.THUMB_MCP]
+        index_mcp = landmarks[self.INDEX_MCP]
+        wrist = landmarks[self.WRIST]
+        
+        # Get palm reference direction
+        palm_direction_x = index_mcp['x'] - wrist['x']
+        
+        # Distance from thumb tip to index MCP (palm)
+        thumb_to_palm = self._get_distance(thumb_tip, index_mcp)
+        
+        # Distance from thumb MCP to index MCP
+        base_width = self._get_distance(thumb_mcp, index_mcp)
+        
+        # Thumb is extended if tip is far from palm
+        if base_width > 0:
+            extension_ratio = thumb_to_palm / base_width
+        else:
+            extension_ratio = 0
+        
+        # Also check thumb angle
+        thumb_angle = self._get_angle(thumb_mcp, thumb_ip, thumb_tip)
+        
+        # For right hand, extended thumb tip is further left
+        # For left hand, extended thumb tip is further right
+        if hand_label == 'Right':
+            horizontal_check = thumb_tip['x'] < thumb_mcp['x']
+        else:
+            horizontal_check = thumb_tip['x'] > thumb_mcp['x']
+        
+        # Combine checks
+        extended = (extension_ratio > 1.2) or (thumb_angle > 150 and horizontal_check)
+        
+        return extended
+    
+    def _calculate_features(self, landmarks, hand_label='Right'):
+        """Calculate hand features with accurate finger detection."""
+        
+        # Accurate finger state detection
+        finger_states = {
+            'thumb': self._is_thumb_extended(landmarks, hand_label),
+            'index': self._is_finger_extended(landmarks, 
+                self.INDEX_MCP, self.INDEX_PIP, self.INDEX_DIP, self.INDEX_TIP),
+            'middle': self._is_finger_extended(landmarks,
+                self.MIDDLE_MCP, self.MIDDLE_PIP, self.MIDDLE_DIP, self.MIDDLE_TIP),
+            'ring': self._is_finger_extended(landmarks,
+                self.RING_MCP, self.RING_PIP, self.RING_DIP, self.RING_TIP),
+            'pinky': self._is_finger_extended(landmarks,
+                self.PINKY_MCP, self.PINKY_PIP, self.PINKY_DIP, self.PINKY_TIP)
+        }
+        
+        extended_count = sum(finger_states.values())
+        
+        # Palm center
+        palm_x = np.mean([landmarks[i]['x'] for i in [0, 5, 9, 13, 17]])
+        palm_y = np.mean([landmarks[i]['y'] for i in [0, 5, 9, 13, 17]])
+        
+        # Hand openness
+        fingertips = [landmarks[i] for i in [4, 8, 12, 16, 20]]
+        openness = np.mean([
+            self._get_distance(ft, {'x': palm_x, 'y': palm_y, 'z': 0})
+            for ft in fingertips
+        ])
+        
+        return {
+            'finger_states': finger_states,
+            'extended_count': extended_count,
+            'palm_center': (palm_x, palm_y),
+            'hand_openness': openness,
+            'wrist': (landmarks[0]['x'], landmarks[0]['y']),
+            'fingertips': {
+                'thumb': (landmarks[4]['x'], landmarks[4]['y']),
+                'index': (landmarks[8]['x'], landmarks[8]['y']),
+                'middle': (landmarks[12]['x'], landmarks[12]['y']),
+                'ring': (landmarks[16]['x'], landmarks[16]['y']),
+                'pinky': (landmarks[20]['x'], landmarks[20]['y'])
+            }
+        }
+    
+    def _draw_landmarks(self, frame, landmarks, features):
+        """Draw landmarks with finger state indicators."""
+        h, w = frame.shape[:2]
+        
+        # Draw connections
+        for start_idx, end_idx in self.HAND_CONNECTIONS:
+            start = landmarks[start_idx]
+            end = landmarks[end_idx]
+            start_pt = (int(start['x'] * w), int(start['y'] * h))
+            end_pt = (int(end['x'] * w), int(end['y'] * h))
+            cv2.line(frame, start_pt, end_pt, (0, 200, 0), 2)
+        
+        # Draw fingertips with color based on extended state
+        fingertip_indices = [4, 8, 12, 16, 20]
+        finger_names = ['thumb', 'index', 'middle', 'ring', 'pinky']
+        
+        for idx, name in zip(fingertip_indices, finger_names):
+            pt = (int(landmarks[idx]['x'] * w), int(landmarks[idx]['y'] * h))
+            
+            # Green if extended, Red if curled
+            if features['finger_states'][name]:
+                color = (0, 255, 0)  # Green = extended
+            else:
+                color = (0, 0, 255)  # Red = curled
+            
+            cv2.circle(frame, pt, 8, color, -1)
+            cv2.circle(frame, pt, 10, (255, 255, 255), 2)
+        
+        # Draw other landmarks smaller
+        for i, lm in enumerate(landmarks):
+            if i not in fingertip_indices:
+                pt = (int(lm['x'] * w), int(lm['y'] * h))
+                cv2.circle(frame, pt, 4, (100, 100, 100), -1)
+    
+    def release(self):
+        """Release resources."""
+        if hasattr(self, 'hand_landmarker'):
+            self.hand_landmarker.close()
