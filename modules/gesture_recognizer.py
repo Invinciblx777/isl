@@ -94,13 +94,23 @@ class GestureRecognizer:
         # Get hands
         primary = None
         secondary = None
-        for hand in hands_data:
-            if hand['label'] == 'Right':
-                primary = hand
-            else:
-                secondary = hand
-        if primary is None and hands_data:
+        
+        # Sort hands by label if possible
+        right_hand = next((h for h in hands_data if h['label'] == 'Right'), None)
+        left_hand = next((h for h in hands_data if h['label'] == 'Left'), None)
+        
+        if right_hand and left_hand:
+            primary = right_hand
+            secondary = left_hand
+        elif right_hand:
+            primary = right_hand
+        elif left_hand:
+            primary = left_hand
+        elif hands_data:
+            # Fallback if labels are weird (e.g. both same label)
             primary = hands_data[0]
+            if len(hands_data) > 1:
+                secondary = hands_data[1]
         
         # Recognize
         if self.mode == GestureMode.SENTENCE:
@@ -145,18 +155,18 @@ class GestureRecognizer:
             pat2 = self._pattern(f2['finger_states'])
             ext2 = sum(f2['finger_states'].values())
             
-            # HELP - Both open palms raised
+            # EMERGENCY - Both hands waving (open)
+            if pat == "TIMRP" and pat2 == "TIMRP":
+                return "EMERGENCY", 0.94
+                
+            # HELP - Both hands present with 4+ fingers
             if ext >= 4 and ext2 >= 4:
                 return "HELP", 0.96
             
             # PAIN - Both pointing
             if pat == "_I___" and pat2 == "_I___":
                 return "PAIN", 0.95
-            
-            # EMERGENCY - Both hands waving (open)
-            if pat == "TIMRP" and pat2 == "TIMRP":
-                return "EMERGENCY", 0.94
-            
+                
             # CLAP / SCHOOL - Both open palms together
             if ext >= 4 and ext2 >= 4 and openness > 0.1:
                 return "SCHOOL", 0.88
@@ -277,9 +287,9 @@ class GestureRecognizer:
         if pat == "__MRP":
             return "ALIEN", 0.82
         
-        # T_MRP: Thumb + last 3 (no index)
+        # T_MRP: Thumb + last 3 (no index) - OK Sign
         if pat == "T_MRP":
-            return "OKAY", 0.88
+            return "OK_SIGN", 0.88
         
         # _IM_P: Index + Middle + Pinky
         if pat == "_IM_P":
