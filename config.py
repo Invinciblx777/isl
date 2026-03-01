@@ -3,6 +3,10 @@ Configuration settings for ISL Recognition System
 """
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Application Info
 APP_NAME = "ISL Recognition System"
@@ -112,3 +116,12 @@ COMPLIANCE_STANDARDS = [
     "IS 13252 - Information Technology Equipment Safety",
     "IS 16333 - Camera-based Systems for Assistive Technology (Ready)"
 ]
+
+# Pastebin API Configuration
+ENABLE_PASTEBIN = os.getenv("ENABLE_PASTEBIN", "True").lower() in ("true", "1", "t")
+
+PASTEBIN_API_KEY = os.getenv("PASTEBIN_API_KEY", "KuOOMbHTMqDTZqgrTmiL_8ipZ0yGvMOo")
+PASTEBIN_USER_KEY = os.getenv("PASTEBIN_USER_KEY", None)
+
+# Privacy Settings: 0=public, 1=unlisted, 2=private
+PASTEBIN_PRIVATE = int(os.getenv("PASTEBIN_PRIVATE", "1"))
